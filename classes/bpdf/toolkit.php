@@ -47,7 +47,7 @@ class BPdf_Toolkit
         $current_page->addToContent($buffer);
     }
 
-    function utf8_to_utf16be(&$txt, $bom = true)
+    protected function utf8_to_utf16be(&$txt, $bom = true)
     {
         $l = strlen($txt);
         $out = $bom ? "\xFE\xFF" : '';
@@ -102,7 +102,7 @@ class BPdf_Toolkit
                             $out .= chr($cp >> 8);
                             $out .= chr($cp & 0xFF);
                         }
-                        continue;
+                        break;
 
                     case 3:
                         $cp = (($q[0] ^ 0xE0) << 12) | (($q[1] ^ 0x80) << 6) | ($q[2] ^ 0x80);
@@ -116,7 +116,7 @@ class BPdf_Toolkit
                             $out .= chr($cp >> 8);
                             $out .= chr($cp & 0xFF);
                         }
-                        continue;
+                        break;
 
                     case 4:
                         $cp = (($q[0] ^ 0xF0) << 18) | (($q[1] ^ 0x80) << 12) | (($q[2] ^ 0x80) << 6) | ($q[3] ^ 0x80);
@@ -137,7 +137,7 @@ class BPdf_Toolkit
                             $out .= chr($s2 >> 8);
                             $out .= chr($s2 & 0xFF);
                         }
-                        continue;
+                        break;
                 }
             }
         }
@@ -229,12 +229,10 @@ class BPdf_Toolkit
 
     public function cell($x, $y, $width, $height, $text, $size, $center = false, $center_h = true)
     {
-
         $text_width = $this->_bPdf->getFontManager()->getStringWidth($text, $size);
 
 //zmniejsza tekst do oporu
         if ($text_width > $width) {
-
             //$text_width = $this->_bPdf->getFontManager()->getStringWidth($text, $size);
 
             while ($text_width > $width) {
