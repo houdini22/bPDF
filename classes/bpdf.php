@@ -2,7 +2,6 @@
 
 class BPdf
 {
-
     protected $_factory = null;
     protected $_parser = null;
 
@@ -123,5 +122,11 @@ class BPdf
     public function getPdfPages()
     {
         return $this->_pdf_pages;
+    }
+
+    public static function registerAutoload() {
+        spl_autoload_register(function ($class) {
+            include dirname(__FILE__) . DIRECTORY_SEPARATOR . str_replace('_', DIRECTORY_SEPARATOR, strtolower($class)) . '.php';
+        });
     }
 }

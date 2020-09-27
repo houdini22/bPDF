@@ -42,7 +42,7 @@ class BPdf_Parser
         $nb_objects = $factory->getNbObjects();
 
         $buffer .= "xref\n";
-        $buffer .= "0 " . $nb_objects + 1 . "\n";
+        $buffer .= "0 " . ($nb_objects + 1) . "\n";
         $buffer .= "0000000000 65535 f\n";
 
         foreach ($xref as $k => $p) {
