@@ -17,10 +17,8 @@ class BPdf_Parser
         $xref = array();
         $xref[-1] = 0;
         $xref[0] = 0;
-        $strObj = array();
         $sizeObj = array();
         $buffer = "";
-        $i = 0;
 
         $trailer = $this->_bPdf->getPdfTrailer();
         $trailer->Size = new BPdf_Object_Element_Numeric($factory->getNbObjects());

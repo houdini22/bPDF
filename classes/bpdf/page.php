@@ -33,8 +33,6 @@ class BPdf_Page
 
         $this->_pdf_page->Resources = $this->_pdf_resources;
 
-        $page_size = $this->_bPdf->getPageManager()->getPageSize();
-
         $this->_pdf_page->Type = new BPdf_Object_Element_Name('Page');
         $this->_pdf_page->Parent = $this->_bPdf->getPdfPages();
         $this->_pdf_page->Contents = $this->_pdf_contents;

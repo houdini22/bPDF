@@ -15,39 +15,194 @@ class BPdf_Toolkit
         $this->_bPdf = $bPdf;
     }
 
-    //przeksztalca pozycje - w pdf x = 0 to dol strony, przeksztalca x = 0 na gore strony
-
     public function getPositionInPage($x, $y, $obj_height = 0)
     {
-
         $page_size = $this->_bPdf->getPageManager()->getPageSize();
-
         $new_y = $page_size['y'] - $y - $obj_height;
-
         return array('x' => $x, 'y' => $new_y);
     }
-
-//	public function setStrokeColor($r, $g, $b) {
-//		$current_page = $this->_bPdf->getPageManager()->getCurrentPage();
-//		
-//		$buffer = "";
-//		$buffer .= sprintf('%.3f',$r).' '.sprintf('%.3f',$g).' '.sprintf('%.3f',$b).' RG';
-//		
-//		$current_page->addToContent($buffer);
-//		
-//	}
 
     public function drawLine($x1, $y1, $x2, $y2)
     {
         $current_page = $this->_bPdf->getPageManager()->getCurrentPage();
 
+        $new1 = $this->getPositionInPage($x1, $y1);
+        $new2 = $this->getPositionInPage($x2, $y2);
+
         $buffer = "";
-        $buffer .= $x1 . " " . $y1 . " m " . $x2 . " " . $y2 . " l S";
+        $buffer .= $new1['x'] . " " . $new1['y'] . " m " . $new2['x'] . " " . $new2['y'] . " l S";
 
         $current_page->addToContent($buffer);
     }
 
-    protected function utf8_to_utf16be(&$txt, $bom = true)
+    public function addText($x, $y, $text, $size = 12, $word_spacing = 0)
+    {
+        $current_font = $this->_bPdf->getFontManager()->getCurrentFont();
+        $current_page = $this->_bPdf->getPageManager()->getCurrentPage();
+
+        $text = $this->utf8ToUtf16be($text, false);
+        $text = $this->filterText($text);
+        $position = $this->getPositionInPage($x, $y, $size);
+
+        $buffer = "";
+        $buffer .= "BT\n";
+        $buffer .= "/{$current_font->font_label} " . $size . " Tf\n";
+        $buffer .= $position['x'] . " " . $position['y'] . " Td\n";
+        //$buffer .= "30 Tw\n";
+        $buffer .= "(" . $text . ") Tj\n";
+        $buffer .= "ET\n";
+
+        $current_page->addToContent($buffer);
+    }
+
+    public function addTextWrap($x, $y, $width, $text, $size = 12, $justify = TRUE)
+    {
+        $words = explode(' ', $text);
+        $line = '';
+        $i = 0;
+
+        if ($justify)
+            $space_width = $this->_bPdf->getFontManager()->getStringWidth(' ', $size);
+
+        foreach ($words as $key => $w) {
+
+            $line .= $words[$key] . ' ';
+            if (isset($words[$key + 1]))
+                $text_width = $this->_bPdf->getFontManager()->getStringWidth($line . ' ' . $words[$key + 1], $size);
+            else {
+                $text_width = $this->_bPdf->getFontManager()->getStringWidth($line, $size);
+                $last_line = TRUE;
+            }
+
+            if ($text_width > $width || isset($last_line)) {
+                if ($justify) {
+                    $line_width = $this->_bPdf->getFontManager()->getStringWidth($line, $size);
+                    $line_without_spaces = $line_width - ($space_width * (count(explode(' ', $line)) - 1));
+                    $spaces_width = $line_width - $line_without_spaces;
+                    $word_spacing = ($line_width - $width) / $spaces_width;
+                    $word_spacing = round($word_spacing, 2);
+                }
+                $this->addText($x, $y + (($size + 3) * $i), $line, $size, $justify ? $word_spacing : 0);
+                $line = '';
+                $i++;
+            }
+        }
+    }
+
+    public function cell($x, $y, $width, $height, $text, $size, $center = false, $center_h = true)
+    {
+        $text_width = $this->_bPdf->getFontManager()->getStringWidth($text, $size);
+
+        if ($text_width > $width) {
+            while ($text_width > $width) {
+                $size = $size - 1;
+                $text_width = $this->_bPdf->getFontManager()->getStringWidth($text, $size);
+            }
+
+        }
+
+        if ($center_h) {
+            $half = $size / 2;
+            $halfHeight = $height / 2;
+            $y = $y + (($halfHeight - $half) / 2);
+        }
+
+        if ($center) {
+            $move = $width - $text_width;
+            $move = $move / 2;
+            $x = $x + $move;
+        }
+
+        $this->addText($x, $y, $text, $size);
+    }
+
+    public function textarea($x, $y, $width, $height, $text, $size)
+    {
+        $textarea_h = $y;
+
+        $words = explode(' ', $text);
+        $lines = array();
+
+        $wordsCount = count($words);
+        $line = "";
+
+        for ($i = 0; $i <= $wordsCount; $i++) {
+            $line .= $words[$i] . ' ';
+            $string_width_a = $this->_bPdf->getFontManager()->getStringWidth($line . $words[$i + 1], $size);
+
+            if ($string_width_a > $width) {
+                $lines[] = $line;
+                $line = '';
+            }
+
+            if ($i == $wordsCount) {
+                $lines[] = $line;
+
+                $wordsCount2 = count($lines);
+                $height2 = $wordsCount2 * ($size + (($size / ($size / 2)) * 0.5));
+
+                if ($height2 > $height) {
+                    $line = '';
+                    $lines = array();
+                    $size = $size - 1;
+                    $i = -1;
+                }
+            }
+        }
+
+        foreach ($lines as $line) {
+            $this->Cell($x, $y, 1000, 1000, $line, $size, false, false);
+            $y = $y + $size + (($size / ($size / 2)) * 0.5);
+        }
+    }
+
+    public function countImages()
+    {
+        return $this->_nb_images;
+    }
+
+    public function addImageJpg($path, $x, $y, $w = 0, $h = 0)
+    {
+        if (!file_exists($path)) {
+            throw new Exception("File doesn't exists.");
+        }
+
+        $image = new BPdf_Resource_Image_Jpeg($this->_bPdf, $this->countImages(), $path);
+
+        $current_page = $this->_bPdf->getPageManager()->getCurrentPage();
+        $this->_nb_images++;
+
+        $page_size = $this->_bPdf->getPageManager()->getPageSize();
+
+        if ($w == 0 && $h == 0) {
+            if ($image->getWidth() > $page_size['x'] && $image->getHeight() > $page_size['y']) {
+                $w = $page_size['x'];
+                $ratio = $page_size['x'] / $image->getWidth();
+                $h = $ratio * $image->getHeight();
+            } else {
+                $w = $image->getWidth();
+                $h = $image->getHeight();
+            }
+        }
+
+        $position_in_page = $this->getPositionInPage($x, $y, $h);
+
+        $x = $position_in_page['x'];
+        $y = $position_in_page['y'];
+
+        $buffer = "";
+        $buffer .= "q\n";
+        $buffer .= $w . " 0 0 " . $h . " " . $x . " " . $y . " cm\n";
+        $buffer .= "/" . $image->getImageLabel() . " Do\n";
+        $buffer .= "Q\n";
+
+        $pdf_image_name = $image->getImageLabel();
+
+        $current_page->getPdfPageResources()->XObject->$pdf_image_name = $image->getResource();
+        $current_page->addToContent($buffer);
+    }
+
+    protected function utf8ToUtf16be(&$txt, $bom = true)
     {
         $l = strlen($txt);
         $out = $bom ? "\xFE\xFF" : '';
@@ -157,206 +312,5 @@ class BPdf_Toolkit
         $text = str_replace("/n", '', $text);
         $text = str_replace("/r", '', $text);
         return $text;
-    }
-
-
-    public function addText($x, $y, $text, $size = 12, $word_spacing = 0)
-    {
-        $current_font = $this->_bPdf->getFontManager()->getCurrentFont();
-        $current_page = $this->_bPdf->getPageManager()->getCurrentPage();
-
-        $text = $this->utf8_to_utf16be($text, false);
-        $text = $this->filterText($text);
-        $position = $this->getPositionInPage($x, $y, $size);
-
-        $buffer = "";
-        $buffer .= "BT\n";
-        $buffer .= "/{$current_font->font_label} " . $size . " Tf\n";
-        $buffer .= $position['x'] . " " . $position['y'] . " Td\n";
-        //$buffer .= "30 Tw\n";
-        $buffer .= "(" . $text . ") Tj\n";
-        $buffer .= "ET\n";
-
-        $current_page->addToContent($buffer);
-    }
-
-    public function addTextWrap($x, $y, $width, $text, $size = 12, $justify = TRUE)
-    {
-        $words = explode(' ', $text);
-        $line = '';
-        $i = 0;
-
-        /*
-        if ($justify)
-            $space_width = $this->_bPdf->getFontManager()->getStringWidth(' ', $size);
-        */
-        foreach ($words as $key => $w) {
-
-            $line .= $words[$key] . ' ';
-            /*if (isset($words[$key + 1]))
-                $line_2 = $line .= $words[$key + 1] . ' ';
-            else
-                $line_2 = $line;
-            */
-            if (isset($words[$key + 1]))
-                $text_width = $this->_bPdf->getFontManager()->getStringWidth($line . ' ' . $words[$key + 1], $size);
-            else {
-                $text_width = $this->_bPdf->getFontManager()->getStringWidth($line, $size);
-                $last_line = TRUE;
-            }
-
-
-            if ($text_width > $width || isset($last_line)) {
-
-                /*
-                if ($justify) {
-                    $line_width = $this->_bPdf->getFontManager()->getStringWidth($line, $size);
-                    $line_without_spaces = $line_width - ($space_width * (count(explode(' ', $line)) - 1));
-                    $spaces_width = $line_width - $line_without_spaces;
-                    $word_spacing = ($line_width - $width) / $spaces_width;
-                    //echo ('spacje = ' . $spaces_width . " \n");
-                    //echo ('linia = ' . $line_width . " \n");
-                    //echo ('word_spacing = ' . $word_spacing. " \n");
-                    $word_spacing = round($word_spacing, 2);
-                }*/
-                $this->addText($x, $y + (($size + 3) * $i), $line, $size/*, $justify ? $word_spacing : 0*/);
-                $line = '';
-                $line_2 = '';
-                $i++;
-            }
-        }
-    }
-
-    public function cell($x, $y, $width, $height, $text, $size, $center = false, $center_h = true)
-    {
-        $text_width = $this->_bPdf->getFontManager()->getStringWidth($text, $size);
-
-//zmniejsza tekst do oporu
-        if ($text_width > $width) {
-            //$text_width = $this->_bPdf->getFontManager()->getStringWidth($text, $size);
-
-            while ($text_width > $width) {
-                $size = $size - 1;
-                $text_width = $this->_bPdf->getFontManager()->getStringWidth($text, $size);
-            }
-
-        }
-
-//wyrownuje wysokosc
-        if ($center_h) {
-            $polowa_tekstu = $size / 2;
-            $polowa_wysokosci = $height / 2;
-            $y = $y + (($polowa_wysokosci - $polowa_tekstu) / 2);
-        }
-
-//wysrodkowuje
-
-        if ($center) {
-            $przesuniecie = $width - $text_width;
-            $przesuniecie = $przesuniecie / 2;
-            $x = $x + $przesuniecie;
-        }
-
-        $this->addText($x, $y, $text, $size);
-    }
-
-    public function textarea($x, $y, $width, $height, $text, $size)
-    {
-        //$wiersze = explode("\n", $text);
-
-        $textarea_h = $y;
-
-        $slowa = explode(' ', $text);
-        $wiersze = array();
-
-
-        //bufer usuwany substr
-
-        $liczba_slow = count($slowa);
-        $string_width = 0;
-        $wiersz = "";
-
-        for ($i = 0; $i <= $liczba_slow; $i++) {
-            $wiersz .= $slowa[$i] . ' ';
-            //$string_width = $this->_bPdf->getFontManager()->getStringWidth($wiersz, $size);
-            $string_width_a = $this->_bPdf->getFontManager()->getStringWidth($wiersz . $slowa[$i + 1], $size);
-
-            if ($string_width_a > $width) {
-                $wiersze[] = $wiersz;
-                $wiersz = '';
-            }
-
-            if ($i == $liczba_slow) {
-                $wiersze[] = $wiersz;
-
-                $liczba_wierszy = count($wiersze);
-                $wysokosc = $liczba_wierszy * ($size + (($size / ($size / 2)) * 0.5));
-
-                if ($wysokosc > $height) {
-                    $wiersz = '';
-                    $wiersze = array();
-                    $size = $size - 1;
-                    $i = -1;
-
-                }
-
-            }
-
-
-        }
-
-        //print_r($wiersze);
-
-
-        foreach ($wiersze as $wiersz) {
-            $this->Cell($x, $y, 1000, 1000, $wiersz, $size, false, false);
-            $y = $y + $size + (($size / ($size / 2)) * 0.5);
-        }
-    }
-
-    public function countImages()
-    {
-        return $this->_nb_images;
-    }
-
-    public function addImageJpg($path, $x, $y, $w = 0, $h = 0)
-    {
-        if (!file_exists($path)) {
-            throw new Exception("plik nieistnieje");
-        }
-
-        $image = new BPdf_Resource_Image_Jpeg($this->_bPdf, $this->countImages(), $path);
-
-        $current_page = $this->_bPdf->getPageManager()->getCurrentPage();
-        $this->_nb_images++;
-
-        $page_size = $this->_bPdf->getPageManager()->getPageSize();
-
-        if ($w == 0 && $h == 0) {
-            if ($image->getWidth() > $page_size['x'] && $image->getHeight() > $page_size['y']) {
-                $w = $page_size['x'];
-                $ratio = $page_size['x'] / $image->getWidth();
-                $h = $ratio * $image->getHeight();
-            } else {
-                $w = $image->getWidth();
-                $h = $image->getHeight();
-            }
-        }
-
-        $position_in_page = $this->getPositionInPage($x, $y, $h);
-
-        $x = $position_in_page['x'];
-        $y = $position_in_page['y'];
-
-        $buffer = "";
-        $buffer .= "q\n";
-        $buffer .= $w . " 0 0 " . $h . " " . $x . " " . $y . " cm\n";
-        $buffer .= "/" . $image->getImageLabel() . " Do\n";
-        $buffer .= "Q\n";
-
-        $pdf_image_name = $image->getImageLabel();
-
-        $current_page->getPdfPageResources()->XObject->$pdf_image_name = $image->getResource();
-        $current_page->addToContent($buffer);
     }
 }
